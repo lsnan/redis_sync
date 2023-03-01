@@ -1,2 +1,100 @@
 # redis_sync
-通过 monitor 命令同步数据
+
+### 通过 redis monitor 命令实现 redis 到 redis 的同步迁移
+
+## 使用方法
+
+## Features
+
+- 将 redis monitor 获取到的相关命令同步在目标 redis 库执行
+- 将 redis monitor 获取到的相关命令输出到指定文件 
+
+## 注意事项
+
+- 源 redis 连接异常, 程序会直接退出
+- 目的 redis 连接异常或写入异常, 不退出程序
+- 目的 redis 连接异常或写入异常, 丢弃当前条目, 继续下一条记录的写入
+
+## 目前默认同步的命令
+
+### 对于阻塞命令(如 BLPOP), 虽然目的端是多线程在写, 但还是建议尽量避免阻塞命令的出现
+
+```
+COPY
+DEL
+EXPIRE
+EXPIREAT
+MOVE
+PERSIST
+PEXPIRE
+PEXPIREAT
+RENAME
+RENAMENX
+RESTORE
+SORT
+TOUCH
+UNLINK
+APPEND
+DECR
+DECRBY
+GETDEL
+GETEX
+GETSET
+INCR
+INCRBY
+INCRBYFLOAT
+MSET
+MSETNX
+PSETEX
+SET
+SETEX
+SETNX
+SETRANGE
+HDEL
+HINCRBY
+HINCRBYFLOAT
+HMSET
+HSET
+HSETNX
+BLMOVE
+BLMPOP
+BLPOP
+BRPOP
+BRPOPLPUSH
+LINSERT
+LMOVE
+LMPOP
+LPOP
+LPUSH
+LPUSHX
+LREM
+LSET
+LTRIM
+RPOP
+RPOPLPUSH
+RPUSH
+RPUSHX
+SADD
+SDIFFSTORE
+SINTERSTORE
+SMOVE
+SPOP
+SREM
+SUNIONSTORE
+BZMPOP
+BZPOPMAX
+BZPOPMIN
+ZADD
+ZDIFFSTORE
+ZINCRBY
+ZINTERSTORE
+ZMPOP
+ZPOPMAX
+ZPOPMIN
+ZRANGESTORE
+ZREM
+ZREMRANGEBYLEX
+ZREMRANGEBYRANK
+ZREMRANGEBYSCORE
+ZUNIONSTORE
+```
