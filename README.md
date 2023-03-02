@@ -39,7 +39,8 @@ go build
 ## Features
 
 - 将 redis monitor 获取到的相关命令同步在目标 redis 库执行
-- 将 redis monitor 获取到的相关命令输出到指定文件 
+- 将 redis monitor 获取到的相关命令输出到指定文件
+- redis monitor 获取到的相关命令中, 支持 key 和 参数 包含空格, 换行, 转义字符等特殊字符
 
 ## 注意事项
 
