@@ -34,7 +34,8 @@ func NewRedisSyncService(opt Options, logger *Logger, crash chan struct{}) *Redi
 		Logger:   logger,
 		SourceCh: make(chan string, opt.ChannelSize),
 		OutCh:    make(chan *RedisMonitorLine, opt.ChannelSize),
-		DestCh:   make(chan *RedisMonitorLine, opt.ChannelSize)}
+		DestCh:   make(chan *RedisMonitorLine, opt.ChannelSize),
+	}
 
 	if err := rss.GetRedisCommands(); err != nil {
 		logger.Fatalln(err)
@@ -142,15 +143,19 @@ func (rss *RedisSyncService) GetDestConn() (err error) {
 	// }
 
 	rss.DestConn = &redis.Pool{
-		MaxIdle:     rss.option.DestMaxIdle,
-		MaxActive:   rss.option.DestParallel + 10,
+		// MaxIdle:     rss.option.DestMaxIdle,
+		// MaxActive:   rss.option.DestParallel + 10,
+		// IdleTimeout: time.Duration(rss.option.DestIdleTimeout) * time.Second,
+		MaxIdle:     20,
+		MaxActive:   100,
 		IdleTimeout: time.Duration(rss.option.DestIdleTimeout) * time.Second,
 		Wait:        true,
 		Dial: func() (redis.Conn, error) {
 			con, err := redis.Dial("tcp",
 				fmt.Sprintf("%s:%d", rss.option.DestHost, rss.option.DestPort),
 				redis.DialUsername(rss.option.DestUsername),
-				redis.DialPassword(rss.option.DestPassword))
+				redis.DialPassword(rss.option.DestPassword),
+				redis.DialDatabase(0))
 			if err != nil {
 				return nil, err
 			}
@@ -192,42 +197,37 @@ func (rss *RedisSyncService) ReadRedisMonitorFormSourceConn() {
 }
 
 func (rss *RedisSyncService) HandleMonitorLine() {
-	for i := 0; i < rss.option.DestParallel; i++ {
-		go func() {
-			for line := range rss.SourceCh {
-				lineSlices, err := RedisMonitorLineSplit(line)
-				if err != nil {
-					continue
-				}
+	for line := range rss.SourceCh {
+		lineSlices, err := RedisMonitorLineSplit(line)
+		if err != nil {
+			continue
+		}
 
-				if len(lineSlices) < 4 {
-					continue
-				}
+		if len(lineSlices) < 4 {
+			continue
+		}
 
-				cmd, err := strconv.Unquote(lineSlices[3])
-				if err != nil {
-					rss.Logger.Printf("对命令: %s 进行反转义字符串: %s 报错: %v", line, lineSlices[3], err)
-					continue
-				}
-				if _, ok := rss.RedisCommands[strings.ToUpper(cmd)]; !ok {
-					continue
-				}
-				out, err := NewRedisMonitorLine(lineSlices)
-				if err != nil {
-					rss.Logger.Printf("对命令: %s 进行反转义字符串报错: %v", line, err)
-					continue
-				}
+		cmd, err := strconv.Unquote(lineSlices[3])
+		if err != nil {
+			rss.Logger.Printf("对命令: %s 进行反转义字符串: %s 报错: %v", line, lineSlices[3], err)
+			continue
+		}
+		if _, ok := rss.RedisCommands[strings.ToUpper(cmd)]; !ok {
+			continue
+		}
+		out, err := NewRedisMonitorLine(lineSlices)
+		if err != nil {
+			rss.Logger.Printf("对命令: %s 进行反转义字符串报错: %v", line, err)
+			continue
+		}
 
-				if rss.OutFile != nil {
-					rss.OutCh <- out
-				}
-				if rss.DestConn != nil {
-					rss.DestCh <- out
-				}
-			}
-		}()
+		if rss.OutFile != nil {
+			rss.OutCh <- out
+		}
+		if rss.DestConn != nil {
+			rss.DestCh <- out
+		}
 	}
-
 }
 
 func (rss *RedisSyncService) WriteToDestConn() {
@@ -235,18 +235,30 @@ func (rss *RedisSyncService) WriteToDestConn() {
 		return
 	}
 
-	for i := 0; i < rss.option.DestParallel; i++ {
-		go func() {
-			for out := range rss.DestCh {
-				conn := rss.DestConn.Get()
+	for out := range rss.DestCh {
+		func() {
+			conn := rss.DestConn.Get()
+			defer conn.Close()
+			i := 0
+			for i = 0; i < 3; i++ {
+
 				if _, err := conn.Do("SELECT", out.DB); err != nil {
 					rss.Logger.Println("REDIS SELECT ERROR:", err, out.Cmd, out.Args)
-					break
+					time.Sleep(10 * time.Millisecond)
+					conn = rss.DestConn.Get()
+					continue
 				}
+
 				if _, err := conn.Do(out.Cmd, out.Args...); err != nil {
 					rss.Logger.Println("REDIS WRITE ERROR:", err, out.Cmd, out.Args)
+					time.Sleep(10 * time.Millisecond)
+					conn = rss.DestConn.Get()
+					continue
 				}
-				conn.Close()
+				break
+			}
+			if i == 3 {
+				rss.Logger.Printf("REDIS WRITE ERROR: DB: %s, CMD: %s, ARGS: %s\n", out.DB, out.Cmd, out.Args)
 			}
 		}()
 	}
@@ -257,36 +269,34 @@ func (rss *RedisSyncService) WriteToOutFile() {
 		return
 	}
 
-	go func() {
-		for out := range rss.OutCh {
-			var line strings.Builder
-			if _, err := line.WriteString(out.Timestamp); err != nil {
-				continue
-			}
-
-			if _, err := line.WriteString(" " + out.DB); err != nil {
-				continue
-			}
-
-			if _, err := line.WriteString(" " + out.Cmd); err != nil {
-				continue
-			}
-
-			for _, arg := range out.Args {
-				if _, err := line.WriteString(" " + arg.(string)); err != nil {
-					continue
-				}
-			}
-			rss.OutFile.Println(line.String())
+	for out := range rss.OutCh {
+		var line strings.Builder
+		if _, err := line.WriteString(out.Timestamp); err != nil {
+			continue
 		}
-	}()
+
+		if _, err := line.WriteString(" " + out.DB); err != nil {
+			continue
+		}
+
+		if _, err := line.WriteString(" " + out.Cmd); err != nil {
+			continue
+		}
+
+		for _, arg := range out.Args {
+			if _, err := line.WriteString(" " + arg.(string)); err != nil {
+				continue
+			}
+		}
+		rss.OutFile.Println(line.String())
+	}
 }
 
 func (rss *RedisSyncService) Run() {
 	rss.PrintRedisCommands()
-	rss.WriteToDestConn()
-	rss.WriteToOutFile()
-	rss.HandleMonitorLine()
+	go rss.WriteToDestConn()
+	go rss.WriteToOutFile()
+	go rss.HandleMonitorLine()
 	go rss.ReadRedisMonitorFormSourceConn()
 }
 
@@ -309,7 +319,7 @@ func (rss *RedisSyncService) Close() {
 	}
 
 	if rss.DestConn != nil {
-		rss.Logger.Println("关闭 目的 redis 连接...")
+		rss.Logger.Println("关闭 目的端 redis 连接...")
 		rss.DestConn.Close()
 	}
 

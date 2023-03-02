@@ -39,20 +39,20 @@ Options:
 
 // 用来接收命令行参数
 type Options struct {
-	SourceHost              string
-	SourcePort              int
-	SourceUsername          string
-	SourcePassword          string
-	Output                  string
-	OutFile                 string
-	LogFile                 string
-	DestHost                string
-	DestPort                int
-	DestUsername            string
-	DestPassword            string
-	DestMaxIdle             int
-	DestIdleTimeout         int
-	DestParallel            int
+	SourceHost     string
+	SourcePort     int
+	SourceUsername string
+	SourcePassword string
+	Output         string
+	OutFile        string
+	LogFile        string
+	DestHost       string
+	DestPort       int
+	DestUsername   string
+	DestPassword   string
+	// DestMaxIdle             int
+	DestIdleTimeout int
+	// DestParallel            int
 	OnlyRedisCommands       string
 	IgnoreRedisCommands     string
 	AdditionalRedisCommands string
@@ -73,9 +73,9 @@ func NewOptions() Options {
 	flag.IntVar(&option.DestPort, "dest-port", 6379, "目的 redis 实列端口号")
 	flag.StringVar(&option.DestUsername, "dest-username", "", "目的 redis 实例用户名")
 	flag.StringVar(&option.DestPassword, "dest-password", "", "目的 redis 实例密码")
-	flag.IntVar(&option.DestMaxIdle, "dest-max-idle", 20, "目的 redis 连接池空闲连接数")
+	// flag.IntVar(&option.DestMaxIdle, "dest-max-idle", 20, "目的 redis 连接池空闲连接数")
 	flag.IntVar(&option.DestIdleTimeout, "dest-idle-timeout", 60, "目的 redis 连接池空闲超时时间(秒)")
-	flag.IntVar(&option.DestParallel, "dest-parallel", 20, "目的 redis 并行写入线程数量")
+	// flag.IntVar(&option.DestParallel, "dest-parallel", 20, "目的 redis 并行写入线程数量")
 	flag.StringVar(&option.OnlyRedisCommands, "only-redis-commands", "", "仅仅输出指定的 redis 官方写命令, 以逗号(,)分割, 如: [SET,HSET,RPUSH], 默认输出所有的redis官方写命令")
 	flag.StringVar(&option.IgnoreRedisCommands, "ignore-redis-commands", "", "忽略指定的 redis 官方写命令, 以逗号(,)分割, 如: [SET,HSET,RPUSH], 默认输出所有的redis官方写命令")
 	flag.StringVar(&option.AdditionalRedisCommands, "additional-redis-commands", "", "输出module等非redis自带的命令, 以逗号(,)分割, 如: [GRAPH.QUERY,JSON.SET], 默认输出所有的redis写命令")
@@ -83,9 +83,9 @@ func NewOptions() Options {
 	flag.Usage = usage
 	flag.Parse()
 
-	if option.DestParallel < 1 {
-		option.DestParallel = 1
-	}
+	// if option.DestParallel < 1 {
+	// 	option.DestParallel = 1
+	// }
 
 	switch option.Output {
 	case OutputFile:
