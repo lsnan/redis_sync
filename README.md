@@ -47,6 +47,7 @@ go build
 - 源端 redis 连接异常, 程序会直接退出
 - 目的端 redis 连接异常或写入异常, 不退出程序
 - 目的端 redis 连接异常或写入异常, 丢弃当前条目, 继续下一条记录的写入
+- `CTRL + C` 或源端异常后, 是立即退出程序, 没有等待处理已经从源端读取到本地缓存的数据  
 
 ## TODO
 
@@ -55,9 +56,9 @@ go build
 
 ## 目前默认同步的命令
 
-- 只包含了 redis 官方文档中的 Generic, String, Hash, List, Set, Sorted Set 这六部分中的写操作
+- 只包含了 redis 官方文档(2023-03-01)中的 Generic, String, Hash, List, Set, Sorted Set 这六部分中的所有写操作
 - 对于阻塞命令(如 BLPOP), 虽然目的端是多线程在写, 但还是建议尽量避免阻塞命令的出现
-- 如果还需要同步其他命令, 请指定参数, 例如: `-additional-redis-commands="GRAPH.QUERY,JSON.SET"`
+- 如果还需要同步其他命令, 请指定`额外命令`参数, 例如: `-additional-redis-commands="GRAPH.QUERY,JSON.SET"`
 
 ```
 COPY
