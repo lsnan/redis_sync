@@ -36,15 +36,13 @@ func NewSourceRedis(opt options.Options, logger *logger.Logger) (Input, error) {
 
 func (sr *SourceRedis) ReadData(ctx context.Context, crash chan struct{}, sch chan<- string) {
 	if _, err := sr.conn.Do("MONITOR"); err != nil {
-
+		crash <- struct{}{}
+		return
 	}
-	for {
-		select {
-		case <-ctx.Done():
-			sr.logger.Println("关闭 源端读 redis 线程 ...")
-			return
-		case line, err := redis.String(sr.conn.Receive())
-			if err != nil {
+
+	go func() {
+		for {
+			if line, err := redis.String(sr.conn.Receive()); err != nil {
 				sr.logger.Println(err)
 				crash <- struct{}{}
 				return
@@ -52,7 +50,11 @@ func (sr *SourceRedis) ReadData(ctx context.Context, crash chan struct{}, sch ch
 				sch <- line
 			}
 		}
-	}
+	}()
+
+	<-ctx.Done()
+	sr.logger.Println("关闭 源端读 redis 线程 ...")
+	return
 }
 
 func (sr *SourceRedis) Close() error {
