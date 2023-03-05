@@ -3,14 +3,11 @@
 package service
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/lsnan/redis_sync/logger"
 	"github.com/lsnan/redis_sync/options"
@@ -24,21 +21,22 @@ type RedisSyncService struct {
 	Crash         chan struct{}
 	RedisCommands map[string]struct{}
 	Source        Input
-	Dest          *DestRedis
-	OutFile       *os.File
+	Dest          Output
 	Logger        *logger.Logger
 	SourceCh      chan string
-	DestCh        chan *RedisMonitorLine
+	OutFileCh     chan string
+	OutRedisCh    chan *RedisMonitorLine
 }
 
 func NewRedisSyncService(ctx context.Context, opt options.Options, logger *logger.Logger, crash chan struct{}) (*RedisSyncService, error) {
 	rss := &RedisSyncService{
-		ctx:      ctx,
-		option:   opt,
-		Crash:    crash,
-		Logger:   logger,
-		SourceCh: make(chan string, opt.ChannelSize),
-		DestCh:   make(chan *RedisMonitorLine, opt.ChannelSize),
+		ctx:        ctx,
+		option:     opt,
+		Crash:      crash,
+		Logger:     logger,
+		SourceCh:   make(chan string, opt.ChannelSize),
+		OutFileCh:  make(chan string, opt.ChannelSize),
+		OutRedisCh: make(chan *RedisMonitorLine, opt.ChannelSize),
 	}
 
 	if err := rss.GetRedisCommands(); err != nil {
@@ -122,29 +120,46 @@ func (rss *RedisSyncService) GetSourceConn() (err error) {
 	if rss.option.Mode == options.FileToRedisMode {
 		rss.Logger.Println("初始化源文件")
 		if rss.Source, err = NewSourceFile(rss.option); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 	} else {
 		rss.Logger.Println("初始化源库连接")
 		if rss.Source, err = NewSourceRedis(rss.option); err != nil {
-			log.Fatalln(err)
+			return err
 		}
 	}
 	return err
 }
 
 func (rss *RedisSyncService) GetDestConn() (err error) {
-	if rss.option.Mode == options.RedisToFileMode || rss.option.Mode == options.RedisToBothMode {
-		rss.Logger.Println("初始化输出文件")
-		if rss.OutFile, err = os.Create(rss.option.OutFile); err != nil {
-			log.Fatalln(err)
-		}
-	} else {
-		if rss.Dest, err = NewDestRedis(rss.option); err != nil {
-			log.Fatalln(err)
+	if rss.option.Mode == options.RedisToFileMode {
+		if rss.Dest, err = NewDestFile(rss.option, rss.OutFileCh, rss.Logger); err != nil {
+			return err
 		}
 	}
-	return err
+
+	if rss.option.Mode == options.RedisToRedisMode || rss.option.Mode == options.FileToRedisMode {
+		if rss.Dest, err = NewDestRedis(rss.option, rss.OutRedisCh, rss.Logger); err != nil {
+			return err
+		}
+	}
+
+	if rss.option.Mode == options.RedisToBothMode {
+		Dest1, err := NewDestFile(rss.option, rss.OutFileCh, rss.Logger)
+		if err != nil {
+			return err
+		}
+
+		Dest2, err := NewDestRedis(rss.option, rss.OutRedisCh, rss.Logger)
+		if err != nil {
+			return err
+		}
+		if rss.Dest, err = NewDestBoth(Dest1, Dest2); err != nil {
+			return err
+		}
+
+	}
+	return nil
 }
 
 func (rss *RedisSyncService) HandleMonitorLine(ctx context.Context) {
@@ -168,12 +183,19 @@ func (rss *RedisSyncService) HandleMonitorLine(ctx context.Context) {
 			if _, ok := rss.RedisCommands[strings.ToUpper(cmd)]; !ok {
 				continue
 			}
+			if rss.option.Mode == options.RedisToFileMode || rss.option.Mode == options.RedisToBothMode {
+				rss.OutFileCh <- line
+				if rss.option.Mode == options.RedisToFileMode {
+					continue
+				}
+			}
+
 			out, err := NewRedisMonitorLine(lineSlices)
 			if err != nil {
 				rss.Logger.Printf("对命令: %s 进行反转义字符串报错: %v", line, err)
 				continue
 			}
-			rss.DestCh <- out
+			rss.OutRedisCh <- out
 		case <-ctx.Done():
 			rss.Logger.Println("关闭 monitor 输出行处理 线程 ...")
 			return
@@ -214,43 +236,43 @@ func (rss *RedisSyncService) ReadData(ctx context.Context) {
 	}
 }
 
-func (rss *RedisSyncService) WriteToDestRedis(ctx context.Context) {
-	if err := rss.Dest.WriteData(ctx, rss.DestCh); err != nil {
-		rss.Logger.Println(err)
-		rss.Crash <- struct{}{}
-	}
-}
+// func (rss *RedisSyncService) WriteToDestRedis(ctx context.Context) {
+// 	if err := rss.Dest.WriteData(ctx, rss.DestCh); err != nil {
+// 		rss.Logger.Println(err)
+// 		rss.Crash <- struct{}{}
+// 	}
+// }
 
-func (rss *RedisSyncService) WriteToOutFile(ctx context.Context) {
-	outputWriter := bufio.NewWriter(rss.OutFile)
-	defer outputWriter.Flush()
+// func (rss *RedisSyncService) WriteToOutFile(ctx context.Context) {
+// 	outputWriter := bufio.NewWriter(rss.OutFile)
+// 	defer outputWriter.Flush()
 
-	for {
-		select {
-		case line := <-rss.SourceCh:
-			if _, err := outputWriter.WriteString(line + "\n"); err != nil {
-				rss.Logger.Println(err)
-				rss.Crash <- struct{}{}
-				return
-			}
-		case <-ctx.Done():
-			rss.Logger.Println("关闭目的端 写文件 线程 ...")
-			return
-		case <-time.After(1 * time.Second): //超过1秒没有从 rss.SourceCh 中获取到新数据, 就刷新一次磁盘
-			if err := outputWriter.Flush(); err != nil {
-				rss.Logger.Println(err)
-				rss.Crash <- struct{}{}
-				return
-			}
-		}
-	}
-}
+// 	for {
+// 		select {
+// 		case line := <-rss.SourceCh:
+// 			if _, err := outputWriter.WriteString(line + "\n"); err != nil {
+// 				rss.Logger.Println(err)
+// 				rss.Crash <- struct{}{}
+// 				return
+// 			}
+// 		case <-ctx.Done():
+// 			rss.Logger.Println("关闭目的端 写文件 线程 ...")
+// 			return
+// 		case <-time.After(1 * time.Second): //超过1秒没有从 rss.SourceCh 中获取到新数据, 就刷新一次磁盘
+// 			if err := outputWriter.Flush(); err != nil {
+// 				rss.Logger.Println(err)
+// 				rss.Crash <- struct{}{}
+// 				return
+// 			}
+// 		}
+// 	}
+// }
 
 // Close 关闭
 func (rss *RedisSyncService) Close() {
 
 	if rss.Source != nil {
-		rss.Logger.Println("关闭 源 redis 连接...")
+		rss.Logger.Println("关闭 源端 连接...")
 		rss.Source.Close()
 	}
 
@@ -259,29 +281,24 @@ func (rss *RedisSyncService) Close() {
 		close(rss.SourceCh)
 	}
 
-	if rss.DestCh != nil {
+	if rss.OutRedisCh != nil {
 		rss.Logger.Println("关闭 write redis channel ...")
-		close(rss.DestCh)
+		close(rss.OutRedisCh)
 	}
 
+	if rss.OutFileCh != nil {
+		rss.Logger.Println("关闭 write redis channel ...")
+		close(rss.OutFileCh)
+	}
 	if rss.Dest != nil {
-		rss.Logger.Println("关闭 目的端 redis 连接...")
-		rss.Dest.Close()
-	}
-
-	if rss.OutFile != nil {
-		rss.Logger.Println("关闭 outfile ...")
-		rss.OutFile.Close()
+		rss.Logger.Println("关闭 目的端 连接...")
+		rss.Source.Close()
 	}
 }
 
 func (rss *RedisSyncService) Run() {
 	rss.PrintRedisCommands()
-	if rss.option.Mode == options.RedisToFileMode || rss.option.Mode == options.RedisToBothMode {
-		go rss.WriteToOutFile(rss.ctx)
-	} else {
-		go rss.WriteToDestRedis(rss.ctx)
-		go rss.HandleMonitorLine(rss.ctx)
-	}
+	go rss.Dest.WriteData(rss.ctx, rss.Crash)
+	go rss.HandleMonitorLine(rss.ctx)
 	go rss.ReadData(rss.ctx)
 }
