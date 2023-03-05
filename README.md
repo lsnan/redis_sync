@@ -21,39 +21,38 @@ go build
 3. 执行 redis_sync 
 
 ```
-  示例 : 
+功能1: 通过 redis monitor 命令监听一个 redis 实例的写入操作, 并将获取到的操作写入其他 redis 实例, 或者写入到本地文件
 
-    将本机 redis 6379 实例的 monitor 输出到 redis.log 文件:
-	  redis_sync -outfile=redis.log
+功能2: 读取指定文件中记录的redis monitor 命令的输出结果, 将数据写入指定的 redis 实例
 
-    将远程 redis 6380 实例的 monitor 输出到 redis.log 文件:
-	  redis_sync --source-host='10.10.10.10' -source-port=6380 -source-password='xxxxxxxxxx' --output='file' -outfile=redis.log
+示例:
 
-    将远程 redis 6380 实例的 monitor 同步到远程 redis 6381:
-	  redis_sync --source-host='10.10.10.10' -source-port=6380 -source-password='xxxxxxxxxx' --output='redis' --dest-host='11.11.11.11' --dest-port=6381 --dest-password='xxxxxxxx'
+  将 redis 实例的 monitor 输出到 redis_monitor.cmd 文件:
+	%s redis-to-file --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --outfile=redis_monitor.cmd
 
-    将远程 redis 6380 实例的 monitor 同步到远程 redis 6381, 并且写入本地文件:
-	  redis_sync --source-host='10.10.10.10' -source-port=6380 -source-password='xxxxxxxxxx' --output='both' --dest-host='11.11.11.11' --dest-port=6381 --dest-password='xxxxxxxx' -outfile=redis.log
+  将 redis 实例的 monitor 同步到其他 redis:
+	%s redis-to-redis --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx'
+
+  将 redis 实例的 monitor 同步到其他 redis, 同时也写入到本地文件:
+	%s redis-to-both --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx' --outfile=redis_monitor.cmd
+
+  将 redis_monitor.cmd 文件中的内容写入到 redis:
+	%s file-to-redis --source-file='redis_monitor.cmd' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx'
 ```
 
 ## Features
 
 - 将 redis monitor 获取到的相关命令同步在目标 redis 库执行
 - 将 redis monitor 获取到的相关命令输出到指定文件
+- 将 文件中的 redis monitor 的相关命令同步到目的端 redis 实例
 - redis monitor 获取到的相关命令中, 支持 key 和 参数 包含空格, 换行, 转义字符等特殊字符
 
 ## 注意事项
 
 - 不同步原始的基础数据, 从运行 redis_sync 命令开始同步 monitor 看到的命令(即只有增量)。
 - 源端 redis 连接异常, 程序会直接退出
-- 目的端 redis 连接异常或写入异常, 不退出程序
-- 目的端 redis 连接异常或写入异常, 丢弃当前条目, 继续下一条记录的写入
-- `CTRL + C` 或源端异常后, 是立即退出程序, 没有等待处理已经从源端读取到本地缓存的数据  
-
-## TODO
-
-- [ ] 目的端 redis 连接异常或写入异常时, 是否需要添加直接退出程序的逻辑
-- [ ] 写入到目的端的多线程按 db 进行分组, 避免每次写入目的端的redis实例时附加的 SELECT 操作 
+- 目的端 redis 连接异常或写入异常,程序会直接退出
+- 由于是单线程写入, 所以遇到阻塞命令(如 BLPOP) 并且在 目的端执行被阻塞时, 之后的内容将永远不会再同步
 
 
 ## 目前默认同步的命令
