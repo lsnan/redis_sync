@@ -22,7 +22,7 @@ var logFilename string
 var rootCmd = &cobra.Command{
 	Use:   "redis_sync",
 	Short: "",
-	Long:  fmt.Sprintf(options.Usage, os.Args[0], os.Args[0], os.Args[0]),
+	Long:  fmt.Sprintf(options.Usage, os.Args[0], os.Args[0], os.Args[0], os.Args[0]),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if logFilename != "" {
 			file, err := os.OpenFile(logFilename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
