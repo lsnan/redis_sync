@@ -28,16 +28,16 @@ go build
 示例:
 
   将 redis 实例的 monitor 输出到 redis_monitor.cmd 文件:
-	%s redis-to-file --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --outfile=redis_monitor.cmd
+	redis_sync redis-to-file --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --outfile=redis_monitor.cmd
 
   将 redis 实例的 monitor 同步到其他 redis:
-	%s redis-to-redis --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx'
+	redis_sync redis-to-redis --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx'
 
   将 redis 实例的 monitor 同步到其他 redis, 同时也写入到本地文件:
-	%s redis-to-both --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx' --outfile=redis_monitor.cmd
+	redis_sync redis-to-both --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx' --outfile=redis_monitor.cmd
 
   将 redis_monitor.cmd 文件中的内容写入到 redis:
-	%s file-to-redis --source-file='redis_monitor.cmd' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx'
+	redis_sync file-to-redis --source-file='redis_monitor.cmd' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx'
 ```
 
 ## Features
