@@ -136,7 +136,7 @@ type DestFile struct {
 }
 
 func NewDestFile(opt options.Options, DestCh chan string, logger *logger.Logger) (*DestFile, error) {
-	OutFile, err := os.OpenFile(opt.OutFile, fileFlag, 0600)
+	OutFile, err := os.OpenFile(opt.OutFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
 	}
