@@ -222,7 +222,7 @@ func (rss *RedisSyncService) Close() {
 	}
 
 	if rss.OutFileCh != nil {
-		rss.Logger.Println("关闭 write redis channel ...")
+		rss.Logger.Println("关闭 write file channel ...")
 		close(rss.OutFileCh)
 	}
 	if rss.Dest != nil {
