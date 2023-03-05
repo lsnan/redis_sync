@@ -6,11 +6,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"github.com/lsnan/redis_sync/logger"
 	"github.com/lsnan/redis_sync/options"
 )
 
@@ -19,12 +19,11 @@ type Output interface {
 }
 
 type DestRedis struct {
-	logger *logger.Logger
 	pool   *redis.Pool
 	DestCh chan *RedisMonitorLine
 }
 
-func NewDestRedis(opt options.Options, DestCh chan *RedisMonitorLine, logger *logger.Logger) (*DestRedis, error) {
+func NewDestRedis(opt options.Options, DestCh chan *RedisMonitorLine) (*DestRedis, error) {
 	pool := &redis.Pool{
 		// MaxIdle:     rss.option.DestMaxIdle,
 		// MaxActive:   rss.option.DestParallel + 10,
@@ -53,7 +52,7 @@ func NewDestRedis(opt options.Options, DestCh chan *RedisMonitorLine, logger *lo
 	}
 
 	_, err := conn.Do("PING")
-	return &DestRedis{pool: pool, DestCh: DestCh, logger: logger}, err
+	return &DestRedis{pool: pool, DestCh: DestCh}, err
 }
 
 func (dr *DestRedis) GetConnOfDB(db string) (redis.Conn, error) {
@@ -67,7 +66,7 @@ func (dr *DestRedis) WriteData(ctx context.Context, crash chan struct{}) {
 	db := "0"
 	conn, err := dr.GetConnOfDB(db)
 	if err != nil {
-		dr.logger.Println("关闭 写目的端 redis 线程 ...")
+		log.Println("关闭 写目的端 redis 线程 ...")
 		crash <- struct{}{}
 		return
 	}
@@ -114,12 +113,12 @@ func (dr *DestRedis) WriteData(ctx context.Context, crash chan struct{}) {
 				break
 			}
 			if i == 3 {
-				dr.logger.Printf("REDIS WRITE ERROR: DB: %s, CMD: %s, ARGS: %s, ERR: %v\n", out.DB, out.Cmd, out.Args, err)
+				log.Printf("REDIS WRITE ERROR: DB: %s, CMD: %s, ARGS: %s, ERR: %v\n", out.DB, out.Cmd, out.Args, err)
 				crash <- struct{}{}
 				return
 			}
 		case <-ctx.Done():
-			dr.logger.Println("关闭 写目的端 redis 线程 ...")
+			log.Println("关闭 写目的端 redis 线程 ...")
 			return
 		}
 	}
@@ -130,17 +129,16 @@ func (dr *DestRedis) Close() error {
 }
 
 type DestFile struct {
-	logger  *logger.Logger
 	OutFile *os.File
 	DestCh  chan string
 }
 
-func NewDestFile(opt options.Options, DestCh chan string, logger *logger.Logger) (*DestFile, error) {
+func NewDestFile(opt options.Options, DestCh chan string) (*DestFile, error) {
 	OutFile, err := os.OpenFile(opt.OutFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return nil, err
 	}
-	return &DestFile{OutFile: OutFile, DestCh: DestCh, logger: logger}, err
+	return &DestFile{OutFile: OutFile, DestCh: DestCh}, err
 }
 
 func (df *DestFile) WriteData(ctx context.Context, crash chan struct{}) {
@@ -151,16 +149,16 @@ func (df *DestFile) WriteData(ctx context.Context, crash chan struct{}) {
 		select {
 		case line := <-df.DestCh:
 			if _, err := outputWriter.WriteString(line + "\n"); err != nil {
-				df.logger.Println("文件写入失败: ", err)
+				log.Println("文件写入失败: ", err)
 				crash <- struct{}{}
 				return
 			}
 		case <-ctx.Done():
-			df.logger.Println("关闭目的端 写文件 线程 ...")
+			log.Println("关闭目的端 写文件 线程 ...")
 			return
 		case <-time.After(1 * time.Second): //超过1秒没有从 rss.SourceCh 中获取到新数据, 就刷新一次磁盘
 			if err := outputWriter.Flush(); err != nil {
-				df.logger.Println("文件刷盘失败: ", err)
+				log.Println("文件刷盘失败: ", err)
 				crash <- struct{}{}
 				return
 			}

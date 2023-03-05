@@ -5,10 +5,10 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/gomodule/redigo/redis"
 	"github.com/hpcloud/tail"
-	"github.com/lsnan/redis_sync/logger"
 	"github.com/lsnan/redis_sync/options"
 )
 
@@ -18,11 +18,10 @@ type Input interface {
 }
 
 type SourceRedis struct {
-	logger *logger.Logger
 	conn   redis.Conn
 }
 
-func NewSourceRedis(opt options.Options, logger *logger.Logger) (Input, error) {
+func NewSourceRedis(opt options.Options) (Input, error) {
 	conn, err := redis.Dial("tcp",
 		fmt.Sprintf("%s:%d", opt.SourceHost, opt.SourcePort),
 		redis.DialUsername(opt.SourceUsername),
@@ -31,7 +30,7 @@ func NewSourceRedis(opt options.Options, logger *logger.Logger) (Input, error) {
 		return nil, err
 	}
 	_, err = conn.Do("PING")
-	return &SourceRedis{conn: conn, logger: logger}, err
+	return &SourceRedis{conn: conn}, err
 }
 
 func (sr *SourceRedis) ReadData(ctx context.Context, crash chan struct{}, sch chan<- string) {
@@ -43,7 +42,7 @@ func (sr *SourceRedis) ReadData(ctx context.Context, crash chan struct{}, sch ch
 	go func() {
 		for {
 			if line, err := redis.String(sr.conn.Receive()); err != nil {
-				sr.logger.Println(err)
+				log.Println(err)
 				crash <- struct{}{}
 				return
 			} else {
@@ -53,7 +52,7 @@ func (sr *SourceRedis) ReadData(ctx context.Context, crash chan struct{}, sch ch
 	}()
 
 	<-ctx.Done()
-	sr.logger.Println("关闭 源端读 redis 线程 ...")
+	log.Println("关闭 源端读 redis 线程 ...")
 	return
 }
 
@@ -62,18 +61,17 @@ func (sr *SourceRedis) Close() error {
 }
 
 type SourceFile struct {
-	logger *logger.Logger
 	file   *tail.Tail
 }
 
-func NewSourceFile(opt options.Options, logger *logger.Logger) (Input, error) {
+func NewSourceFile(opt options.Options) (Input, error) {
 	file, err := tail.TailFile(opt.SourceFile, tail.Config{
 		ReOpen:    false, //不重新打开
 		Follow:    true,  //跟随 tail -f
 		MustExist: true,  //文件不存在报错
 		Poll:      false,
 	})
-	return &SourceFile{file: file, logger: logger}, err
+	return &SourceFile{file: file}, err
 }
 
 func (sf *SourceFile) ReadData(ctx context.Context, crash chan struct{}, sch chan<- string) {
@@ -81,16 +79,16 @@ func (sf *SourceFile) ReadData(ctx context.Context, crash chan struct{}, sch cha
 
 		select {
 		case <-ctx.Done():
-			sf.logger.Println("关闭 源端读 file 线程 ...")
+			log.Println("关闭 源端读 file 线程 ...")
 			return
 		case line, ok := <-sf.file.Lines:
 			if !ok {
-				sf.logger.Println("读文件失败", line.Err)
+				log.Println("读文件失败", line.Err)
 				crash <- struct{}{}
 				return
 			}
 			if line.Err != nil {
-				sf.logger.Println(line.Err)
+				log.Println(line.Err)
 				crash <- struct{}{}
 				return
 			}

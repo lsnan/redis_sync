@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lsnan/redis_sync/logger"
 	"github.com/lsnan/redis_sync/options"
 	"github.com/lsnan/redis_sync/utils"
 )
@@ -22,18 +21,16 @@ type RedisSyncService struct {
 	RedisCommands map[string]struct{}
 	Source        Input
 	Dest          Output
-	Logger        *logger.Logger
 	SourceCh      chan string
 	OutFileCh     chan string
 	OutRedisCh    chan *RedisMonitorLine
 }
 
-func NewRedisSyncService(ctx context.Context, opt options.Options, logger *logger.Logger, crash chan struct{}) (*RedisSyncService, error) {
+func NewRedisSyncService(ctx context.Context, opt options.Options, crash chan struct{}) (*RedisSyncService, error) {
 	rss := &RedisSyncService{
 		ctx:        ctx,
 		option:     opt,
 		Crash:      crash,
-		Logger:     logger,
 		SourceCh:   make(chan string, opt.ChannelSize),
 		OutFileCh:  make(chan string, opt.ChannelSize),
 		OutRedisCh: make(chan *RedisMonitorLine, opt.ChannelSize),
@@ -55,7 +52,7 @@ func NewRedisSyncService(ctx context.Context, opt options.Options, logger *logge
 }
 
 func (rss *RedisSyncService) GetRedisCommands() (err error) {
-	rss.Logger.Println("初始化要监听的 redis 写命令列表")
+	log.Println("初始化要监听的 redis 写命令列表")
 
 	var commands = make(map[string]struct{})
 	rss.RedisCommands = make(map[string]struct{})
@@ -113,18 +110,18 @@ func (rss *RedisSyncService) PrintRedisCommands() {
 	for cmd := range rss.RedisCommands {
 		cmds = append(cmds, cmd)
 	}
-	rss.Logger.Println("监听的命令列表:", cmds)
+	log.Println("监听的命令列表:", cmds)
 }
 
 func (rss *RedisSyncService) GetSourceConn() (err error) {
 	if rss.option.Mode == options.FileToRedisMode {
-		rss.Logger.Println("初始化源文件")
-		if rss.Source, err = NewSourceFile(rss.option, rss.Logger); err != nil {
+		log.Println("初始化源文件")
+		if rss.Source, err = NewSourceFile(rss.option); err != nil {
 			return err
 		}
 	} else {
-		rss.Logger.Println("初始化源库连接")
-		if rss.Source, err = NewSourceRedis(rss.option, rss.Logger); err != nil {
+		log.Println("初始化源库连接")
+		if rss.Source, err = NewSourceRedis(rss.option); err != nil {
 			return err
 		}
 	}
@@ -133,24 +130,24 @@ func (rss *RedisSyncService) GetSourceConn() (err error) {
 
 func (rss *RedisSyncService) GetDestConn() (err error) {
 	if rss.option.Mode == options.RedisToFileMode {
-		if rss.Dest, err = NewDestFile(rss.option, rss.OutFileCh, rss.Logger); err != nil {
+		if rss.Dest, err = NewDestFile(rss.option, rss.OutFileCh); err != nil {
 			return err
 		}
 	}
 
 	if rss.option.Mode == options.RedisToRedisMode || rss.option.Mode == options.FileToRedisMode {
-		if rss.Dest, err = NewDestRedis(rss.option, rss.OutRedisCh, rss.Logger); err != nil {
+		if rss.Dest, err = NewDestRedis(rss.option, rss.OutRedisCh); err != nil {
 			return err
 		}
 	}
 
 	if rss.option.Mode == options.RedisToBothMode {
-		Dest1, err := NewDestFile(rss.option, rss.OutFileCh, rss.Logger)
+		Dest1, err := NewDestFile(rss.option, rss.OutFileCh)
 		if err != nil {
 			return err
 		}
 
-		Dest2, err := NewDestRedis(rss.option, rss.OutRedisCh, rss.Logger)
+		Dest2, err := NewDestRedis(rss.option, rss.OutRedisCh)
 		if err != nil {
 			return err
 		}
@@ -177,7 +174,7 @@ func (rss *RedisSyncService) HandleMonitorLine(ctx context.Context) {
 
 			cmd, err := strconv.Unquote(lineSlices[3])
 			if err != nil {
-				rss.Logger.Printf("对命令: %s 进行反转义字符串: %s 报错: %v", line, lineSlices[3], err)
+				log.Printf("对命令: %s 进行反转义字符串: %s 报错: %v", line, lineSlices[3], err)
 				continue
 			}
 			if _, ok := rss.RedisCommands[strings.ToUpper(cmd)]; !ok {
@@ -192,12 +189,12 @@ func (rss *RedisSyncService) HandleMonitorLine(ctx context.Context) {
 
 			out, err := NewRedisMonitorLine(lineSlices)
 			if err != nil {
-				rss.Logger.Printf("对命令: %s 进行反转义字符串报错: %v", line, err)
+				log.Printf("对命令: %s 进行反转义字符串报错: %v", line, err)
 				continue
 			}
 			rss.OutRedisCh <- out
 		case <-ctx.Done():
-			rss.Logger.Println("关闭 monitor 输出行处理 线程 ...")
+			log.Println("关闭 monitor 输出行处理 线程 ...")
 			return
 		}
 	}
@@ -207,26 +204,26 @@ func (rss *RedisSyncService) HandleMonitorLine(ctx context.Context) {
 func (rss *RedisSyncService) Close() {
 
 	if rss.Source != nil {
-		rss.Logger.Println("关闭 源端 连接...")
+		log.Println("关闭 源端 连接...")
 		rss.Source.Close()
 	}
 
 	if rss.SourceCh != nil {
-		rss.Logger.Println("关闭 源 redis channel...")
+		log.Println("关闭 源 redis channel...")
 		close(rss.SourceCh)
 	}
 
 	if rss.OutRedisCh != nil {
-		rss.Logger.Println("关闭 write redis channel ...")
+		log.Println("关闭 write redis channel ...")
 		close(rss.OutRedisCh)
 	}
 
 	if rss.OutFileCh != nil {
-		rss.Logger.Println("关闭 write file channel ...")
+		log.Println("关闭 write file channel ...")
 		close(rss.OutFileCh)
 	}
 	if rss.Dest != nil {
-		rss.Logger.Println("关闭 目的端 连接...")
+		log.Println("关闭 目的端 连接...")
 		rss.Source.Close()
 	}
 }

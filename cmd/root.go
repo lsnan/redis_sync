@@ -21,6 +21,22 @@ var rootCmd = &cobra.Command{
 	Use:   "redis_sync",
 	Short: "",
 	Long:  fmt.Sprintf(options.Usage, os.Args[0], os.Args[0], os.Args[0], os.Args[0]),
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if logFilename == "" {
+			return nil
+		}
+		file, err := os.OpenFile(logFilename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.ModePerm)
+		if err != nil {
+			return err
+		}
+
+		// 组合一下即可，os.Stdout代表标准输出流
+		multiWriter := io.MultiWriter(os.Stdout, file)
+		log.SetOutput(multiWriter)
+
+		log.SetFlags(log.LstdFlags | log.Lmicroseconds | log.Lshortfile)
+		return nil
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
@@ -43,15 +59,11 @@ func versionCmd() *cobra.Command {
 
 // redis_sync redis-to-file
 func RedisToFileCmd() *cobra.Command {
-	opt := options.Options{Mode: options.RedisToFileMode, LogFile: logFilename}
+	opt := options.Options{Mode: options.RedisToFileMode}
 	cmd := &cobra.Command{
 		Use:   "redis-to-file",
 		Short: "将 redis 实例的 monitor 输出到指定的文件",
 		Run: func(cmd *cobra.Command, args []string) {
-			if opt.OutFile == "" {
-				fmt.Println("请指定输出文件...")
-			}
-
 			service.Server(opt)
 		},
 	}
@@ -70,7 +82,7 @@ func RedisToFileCmd() *cobra.Command {
 
 // redis_sync redis-to-redis
 func RedisToRedisCmd() *cobra.Command {
-	opt := options.Options{Mode: options.RedisToRedisMode, LogFile: logFilename}
+	opt := options.Options{Mode: options.RedisToRedisMode}
 	cmd := &cobra.Command{
 		Use:   "redis-to-redis",
 		Short: "将 redis 实例的 monitor 同步到其他 redis",
@@ -97,7 +109,7 @@ func RedisToRedisCmd() *cobra.Command {
 
 // redis_sync redis-to-both
 func RedisToBothCmd() *cobra.Command {
-	opt := options.Options{Mode: options.RedisToBothMode, LogFile: logFilename}
+	opt := options.Options{Mode: options.RedisToBothMode}
 	cmd := &cobra.Command{
 		Use:   "redis-to-both",
 		Short: "将 redis 实例的 monitor 同步到其他 redis, 同时也写入到本地文件",
@@ -125,7 +137,7 @@ func RedisToBothCmd() *cobra.Command {
 
 // redis_sync file-to-redis
 func FileToRedisCmd() *cobra.Command {
-	opt := options.Options{Mode: options.FileToRedisMode, LogFile: logFilename}
+	opt := options.Options{Mode: options.FileToRedisMode}
 	cmd := &cobra.Command{
 		Use:   "file-to-redis",
 		Short: "将指定文件中的内容写入到 redis",

@@ -20,5 +20,4 @@ type Options struct {
 	AdditionalRedisCommands string
 	ChannelSize             int64
 	Mode                    int
-	LogFile                 string
 }
