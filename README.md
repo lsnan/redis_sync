@@ -28,16 +28,16 @@ go build
 示例:
 
   将 redis 实例的 monitor 输出到 redis_monitor.cmd 文件:
-	redis_sync redis-to-file --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --outfile=redis_monitor.cmd
+	redis_sync redis-to-file --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --outfile=redis-monitor.cmd --log=redis_sync.log
 
   将 redis 实例的 monitor 同步到其他 redis:
-	redis_sync redis-to-redis --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx'
+	redis_sync redis-to-redis --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx' --log=redis_sync.log
 
   将 redis 实例的 monitor 同步到其他 redis, 同时也写入到本地文件:
-	redis_sync redis-to-both --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx' --outfile=redis_monitor.cmd
+	redis_sync redis-to-both --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx' --outfile=redis_monitor.cmd --log=redis_sync.log
 
   将 redis_monitor.cmd 文件中的内容写入到 redis:
-	redis_sync file-to-redis --source-file='redis_monitor.cmd' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx'
+	redis_sync file-to-redis --source-file='redis_monitor.cmd' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx' --log=redis_sync.log
 ```
 
 ## Features
@@ -52,6 +52,7 @@ go build
 - 不同步原始的基础数据, 从运行 redis_sync 命令开始同步 monitor 看到的命令(即只有增量)。
 - 源端 redis 连接异常, 程序会直接退出
 - 目的端 redis 连接异常或写入异常,程序会直接退出
+- Monitor 输出行处理逻辑, 如果遇到非指定的命令, 或者解析命令行失败, 则抛弃本行内容, 继续处理下一行数据
 - 由于是单线程写入, 所以遇到阻塞命令(如 BLPOP) 并且在 目的端执行被阻塞时, 之后的内容将永远不会再同步
 - 写入文件时, 会有延迟, 当monitor获取到的写请求频率过低时, 会每秒钟刷新一次文件到磁盘
 
