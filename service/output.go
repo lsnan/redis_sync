@@ -25,13 +25,6 @@ type DestRedis struct {
 }
 
 func NewDestRedis(opt options.Options, DestCh chan *RedisMonitorLine, logger *logger.Logger) (*DestRedis, error) {
-	// if rss.DestConn, err = redis.Dial("tcp",
-	// 	fmt.Sprintf("%s:%d", rss.option.DestHost, rss.option.DestPort),
-	// 	redis.DialUsername(rss.option.DestUsername),
-	// 	redis.DialPassword(rss.option.DestPassword)); err != nil {
-	// 	return err
-	// }
-
 	pool := &redis.Pool{
 		// MaxIdle:     rss.option.DestMaxIdle,
 		// MaxActive:   rss.option.DestParallel + 10,
@@ -88,49 +81,48 @@ func (dr *DestRedis) WriteData(ctx context.Context, crash chan struct{}) {
 		case out := <-dr.DestCh:
 			i := 0
 			for i = 0; i < 3; i++ {
-				if conn == nil || err != nil || db != out.DB {
+				if conn == nil || err != nil {
 					time.Sleep(100 * time.Millisecond)
+					if conn != nil {
+						conn.Close()
+					}
 					db = out.DB
 					conn, err = dr.GetConnOfDB(db)
 					continue
 				}
 
+				if db != out.DB {
+					db = out.DB
+					if _, err = conn.Do("SELECT", db); err != nil {
+						time.Sleep(100 * time.Millisecond)
+						if conn != nil {
+							conn.Close()
+						}
+						conn, err = dr.GetConnOfDB(db)
+						continue
+					}
+				}
+
 				if _, err = conn.Do(out.Cmd, out.Args...); err != nil {
 					time.Sleep(100 * time.Millisecond)
+					if conn != nil {
+						conn.Close()
+					}
 					conn, err = dr.GetConnOfDB(db)
 					continue
 				}
 				break
 			}
 			if i == 3 {
-				dr.logger.Println("REDIS WRITE ERROR: DB: %s, CMD: %s, ARGS: %s, ERR: %v\n", out.DB, out.Cmd, out.Args, err)
+				dr.logger.Printf("REDIS WRITE ERROR: DB: %s, CMD: %s, ARGS: %s, ERR: %v\n", out.DB, out.Cmd, out.Args, err)
+				crash <- struct{}{}
+				return
 			}
 		case <-ctx.Done():
 			dr.logger.Println("关闭 写目的端 redis 线程 ...")
 			return
 		}
 	}
-	// for out := range dch {
-	// 	i := 0
-	// 	for i = 0; i < 3; i++ {
-	// 		if conn == nil || err != nil || db != out.DB {
-	// 			time.Sleep(100 * time.Millisecond)
-	// 			db = out.DB
-	// 			conn, err = dr.GetConnOfDB(db)
-	// 			continue
-	// 		}
-
-	// 		if _, err = conn.Do(out.Cmd, out.Args...); err != nil {
-	// 			time.Sleep(100 * time.Millisecond)
-	// 			conn, err = dr.GetConnOfDB(db)
-	// 			continue
-	// 		}
-	// 		break
-	// 	}
-	// 	if i == 3 {
-	// 		return fmt.Errorf("REDIS WRITE ERROR: DB: %s, CMD: %s, ARGS: %s, ERR: %v\n", out.DB, out.Cmd, out.Args, err)
-	// 	}
-	// }
 }
 
 func (dr *DestRedis) Close() error {
@@ -160,6 +152,8 @@ func (df *DestFile) WriteData(ctx context.Context, crash chan struct{}) {
 		case line := <-df.DestCh:
 			if _, err := outputWriter.WriteString(line + "\n"); err != nil {
 				df.logger.Println("文件写入失败: ", err)
+				crash <- struct{}{}
+				return
 			}
 		case <-ctx.Done():
 			df.logger.Println("关闭目的端 写文件 线程 ...")
@@ -167,6 +161,8 @@ func (df *DestFile) WriteData(ctx context.Context, crash chan struct{}) {
 		case <-time.After(1 * time.Second): //超过1秒没有从 rss.SourceCh 中获取到新数据, 就刷新一次磁盘
 			if err := outputWriter.Flush(); err != nil {
 				df.logger.Println("文件刷盘失败: ", err)
+				crash <- struct{}{}
+				return
 			}
 		}
 	}

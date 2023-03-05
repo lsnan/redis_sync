@@ -119,12 +119,12 @@ func (rss *RedisSyncService) PrintRedisCommands() {
 func (rss *RedisSyncService) GetSourceConn() (err error) {
 	if rss.option.Mode == options.FileToRedisMode {
 		rss.Logger.Println("初始化源文件")
-		if rss.Source, err = NewSourceFile(rss.option); err != nil {
+		if rss.Source, err = NewSourceFile(rss.option, rss.Logger); err != nil {
 			return err
 		}
 	} else {
 		rss.Logger.Println("初始化源库连接")
-		if rss.Source, err = NewSourceRedis(rss.option); err != nil {
+		if rss.Source, err = NewSourceRedis(rss.option, rss.Logger); err != nil {
 			return err
 		}
 	}
@@ -201,72 +201,7 @@ func (rss *RedisSyncService) HandleMonitorLine(ctx context.Context) {
 			return
 		}
 	}
-
-	// for line := range rss.SourceCh {
-	// 	lineSlices, err := utils.RedisMonitorLineSplit(line)
-	// 	if err != nil {
-	// 		continue
-	// 	}
-
-	// 	if len(lineSlices) < 4 {
-	// 		continue
-	// 	}
-
-	// 	cmd, err := strconv.Unquote(lineSlices[3])
-	// 	if err != nil {
-	// 		rss.Logger.Printf("对命令: %s 进行反转义字符串: %s 报错: %v", line, lineSlices[3], err)
-	// 		continue
-	// 	}
-	// 	if _, ok := rss.RedisCommands[strings.ToUpper(cmd)]; !ok {
-	// 		continue
-	// 	}
-	// 	out, err := NewRedisMonitorLine(lineSlices)
-	// 	if err != nil {
-	// 		rss.Logger.Printf("对命令: %s 进行反转义字符串报错: %v", line, err)
-	// 		continue
-	// 	}
-	// 	rss.DestCh <- out
-	// }
 }
-
-func (rss *RedisSyncService) ReadData(ctx context.Context) {
-	if err := rss.Source.ReadData(ctx, rss.SourceCh); err != nil {
-		rss.Logger.Println(err)
-		rss.Crash <- struct{}{}
-	}
-}
-
-// func (rss *RedisSyncService) WriteToDestRedis(ctx context.Context) {
-// 	if err := rss.Dest.WriteData(ctx, rss.DestCh); err != nil {
-// 		rss.Logger.Println(err)
-// 		rss.Crash <- struct{}{}
-// 	}
-// }
-
-// func (rss *RedisSyncService) WriteToOutFile(ctx context.Context) {
-// 	outputWriter := bufio.NewWriter(rss.OutFile)
-// 	defer outputWriter.Flush()
-
-// 	for {
-// 		select {
-// 		case line := <-rss.SourceCh:
-// 			if _, err := outputWriter.WriteString(line + "\n"); err != nil {
-// 				rss.Logger.Println(err)
-// 				rss.Crash <- struct{}{}
-// 				return
-// 			}
-// 		case <-ctx.Done():
-// 			rss.Logger.Println("关闭目的端 写文件 线程 ...")
-// 			return
-// 		case <-time.After(1 * time.Second): //超过1秒没有从 rss.SourceCh 中获取到新数据, 就刷新一次磁盘
-// 			if err := outputWriter.Flush(); err != nil {
-// 				rss.Logger.Println(err)
-// 				rss.Crash <- struct{}{}
-// 				return
-// 			}
-// 		}
-// 	}
-// }
 
 // Close 关闭
 func (rss *RedisSyncService) Close() {
@@ -300,5 +235,5 @@ func (rss *RedisSyncService) Run() {
 	rss.PrintRedisCommands()
 	go rss.Dest.WriteData(rss.ctx, rss.Crash)
 	go rss.HandleMonitorLine(rss.ctx)
-	go rss.ReadData(rss.ctx)
+	go rss.Source.ReadData(rss.ctx, rss.Crash, rss.SourceCh)
 }
