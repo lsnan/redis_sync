@@ -5,8 +5,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"time"
 
