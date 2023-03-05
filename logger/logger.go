@@ -24,7 +24,9 @@ func NewLogger(filename string, prefix string, fileFlag int, logFlag int) *Logge
 		os.Exit(1)
 	}
 
-	return &Logger{LogFile: file, Logger: log.New(file, prefix, logFlag)}
+	multiWriter := io.MultiWriter(os.Stdout, file)
+
+	return &Logger{LogFile: file, Logger: log.New(multiWriter, prefix, logFlag)}
 }
 
 // Close 关闭

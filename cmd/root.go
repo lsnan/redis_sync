@@ -23,24 +23,6 @@ var rootCmd = &cobra.Command{
 	Use:   "redis_sync",
 	Short: "",
 	Long:  fmt.Sprintf(options.Usage, os.Args[0], os.Args[0], os.Args[0], os.Args[0]),
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if logFilename != "" {
-			file, err := os.OpenFile(logFilename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, os.ModePerm)
-			if err != nil {
-				return err
-			}
-			// defer func() {
-			// 	file.Close()
-			// }()
-
-			// 组合一下即可，os.Stdout代表标准输出流
-			multiWriter := io.MultiWriter(os.Stdout, file)
-			log.SetOutput(multiWriter)
-		}
-
-		log.SetFlags(log.LstdFlags | log.Lshortfile)
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
