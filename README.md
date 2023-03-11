@@ -36,7 +36,7 @@ go build
   将 redis 实例的 monitor 同步到其他 redis, 同时也写入到本地文件:
 	redis_sync redis-to-both --source-host='10.10.10.10' --source-port=6379 --source-password='xxxxxxxxxx' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx' --outfile=redis_monitor.cmd --log=redis_sync.log
 
-  将 redis_monitor.cmd 文件中的内容写入到 redis:
+  将 redis_monitor.cmd 文件中的内容写入到 redis, 到文件末尾后以 tail -f 方式实时监听文件的写入:
 	redis_sync file-to-redis --source-file='redis_monitor.cmd' --dest-host='11.11.11.11' --dest-port=6379 --dest-password='xxxxxxxx' --log=redis_sync.log
 ```
 
